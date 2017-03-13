@@ -4,9 +4,13 @@ import os
 # path and dataset parameter
 #
 
+# Pascal VOC constants
+
 DATA_PATH = 'data'
 
 PASCAL_PATH = os.path.join(DATA_PATH, 'pascal_voc')
+
+MY_OWN_DATA_PATH = os.path.join(DATA_PATH, 'my_own_data_set')
 
 CACHE_PATH = os.path.join(DATA_PATH, 'cache')
 
@@ -17,13 +21,14 @@ WEIGHTS_DIR = os.path.join(DATA_PATH, 'weights')
 WEIGHTS_FILE = None
 # WEIGHTS_FILE = os.path.join(DATA_PATH, 'weights', 'YOLO_small.ckpt')
 
-CLASSES = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus',
-           'car', 'cat', 'chair', 'cow', 'diningtable', 'dog', 'horse',
-           'motorbike', 'person', 'pottedplant', 'sheep', 'sofa',
-           'train', 'tvmonitor']
+PASCAL_CLASSES = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus',
+                  'car', 'cat', 'chair', 'cow', 'diningtable', 'dog', 'horse',
+                  'motorbike', 'person', 'pottedplant', 'sheep', 'sofa',
+                  'train', 'tvmonitor']
 
-FLIPPED = True
+MY_OWN_DATA_CLASSES = ['car']
 
+FLIPPED = False
 
 #
 # model parameter
@@ -37,7 +42,7 @@ BOXES_PER_CELL = 2
 
 ALPHA = 0.1
 
-DISP_CONSOLE = False
+DISP_CONSOLE = True
 
 OBJECT_SCALE = 1.0
 NOOBJECT_SCALE = 1.0
@@ -53,19 +58,19 @@ GPU = ''
 
 LEARNING_RATE = 0.0001
 
-DECAY_STEPS = 30000
+DECAY_STEPS = 1
 
-DECAY_RATE = 0.1
+DECAY_RATE = 0.0005
 
 STAIRCASE = True
 
-BATCH_SIZE = 45
+BATCH_SIZE = 16
 
 MAX_ITER = 15000
 
 SUMMARY_ITER = 10
 
-SAVE_ITER = 1000
+SAVE_ITER = 11
 
 
 #

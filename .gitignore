@@ -1,0 +1,9 @@
+.idea/*
+
+/data/weights/YOLO_small.ckpt
+/test/
+/data/cache/
+/data/pascal_voc/
+/venv/
+/data/output/*
+/data/my_own_data_set/
