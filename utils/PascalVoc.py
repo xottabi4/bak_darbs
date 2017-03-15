@@ -17,6 +17,7 @@ class PascalVoc(object):
         self.cell_size = cfg.CELL_SIZE
         self.classes = cfg.PASCAL_CLASSES
         self.class_to_ind = dict(zip(self.classes, xrange(len(self.classes))))
+        self.prediction_count = 5 + len(self.classes)
         self.flipped = cfg.FLIPPED
         self.phase = phase
         self.rebuild = rebuild
@@ -27,8 +28,8 @@ class PascalVoc(object):
 
     def get(self):
         images = np.zeros((self.batch_size, self.image_size, self.image_size, 3))
-        prediction_count = cfg.BOXES_PER_CELL * 5 + len(self.classes)
-        labels = np.zeros((self.batch_size, self.cell_size, self.cell_size, prediction_count))
+
+        labels = np.zeros((self.batch_size, self.cell_size, self.cell_size, self.prediction_count))
         count = 0
         while count < self.batch_size:
             imname = self.gt_labels[self.cursor]['imname']
@@ -110,7 +111,7 @@ class PascalVoc(object):
         w_ratio = 1.0 * self.image_size / im.shape[1]
         # im = cv2.resize(im, [self.image_size, self.image_size])
 
-        label = np.zeros((self.cell_size, self.cell_size, 25))
+        label = np.zeros((self.cell_size, self.cell_size, self.prediction_count))
         filename = os.path.join(self.data_path, 'Annotations', index + '.xml')
         tree = ET.parse(filename)
         objs = tree.findall('object')

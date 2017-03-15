@@ -11,10 +11,11 @@ from utils.PascalVoc import PascalVoc
 
 
 class Solver(object):
-    def __init__(self, net, data):
+    def __init__(self, net, data, weights_file=None, use_fc_layer_variables=True):
         self.net = net
         self.data = data
-        self.weights_file = cfg.WEIGHTS_FILE
+        self.weights_file = weights_file
+        self.use_fc_layer_variables = use_fc_layer_variables
         self.max_iter = cfg.MAX_ITER
         self.initial_learning_rate = cfg.LEARNING_RATE
         self.decay_steps = cfg.DECAY_STEPS
@@ -33,18 +34,21 @@ class Solver(object):
         self.learning_rate = tf.train.exponential_decay(
             self.initial_learning_rate, self.global_step, self.decay_steps,
             self.decay_rate, self.staircase, name='learning_rate')
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.net.loss,
-                                                                                           global_step=self.global_step)
-        # self.optimizer = tf.train.GradientDescentOptimizer(
-        #     learning_rate=self.learning_rate).minimize(
-        #     self.net.total_loss, global_step=self.global_step)
-        self.ema = tf.train.ExponentialMovingAverage(decay=0.9)
+
+        # self.learning_rate = self.initial_learning_rate
+
+        # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate).minimize(self.net.loss,
+        #                                                                                            global_step=self.global_step)
+        self.optimizer = tf.train.GradientDescentOptimizer(
+            learning_rate=self.learning_rate).minimize(
+            self.net.loss, global_step=self.global_step)
+        self.ema = tf.train.ExponentialMovingAverage(decay=0.999)
         self.averages_op = self.ema.apply(tf.trainable_variables())
         with tf.control_dependencies([self.optimizer]):
             self.train_op = tf.group(self.averages_op)
 
         self.summary_op = tf.summary.merge_all()
-        self.saver = tf.train.Saver(self.net.collection, max_to_keep=None)
+        self.saver = tf.train.Saver(self.net.all_layer_variables, max_to_keep=None)
         self.writer = tf.summary.FileWriter(self.output_dir, flush_secs=60)
         self.ckpt_file = os.path.join(self.output_dir, 'save.ckpt')
 
@@ -53,7 +57,11 @@ class Solver(object):
 
         if self.weights_file is not None:
             print 'Restoring weights from: ' + self.weights_file
-            self.saver.restore(self.sess, self.weights_file)
+            if self.use_fc_layer_variables:
+                saver = tf.train.Saver(self.net.all_layer_variables, max_to_keep=None)
+            else:
+                saver = tf.train.Saver(self.net.conv_layer_variables, max_to_keep=None)
+            saver.restore(self.sess, self.weights_file)
 
         self.writer.add_graph(self.sess.graph)
 
@@ -63,58 +71,80 @@ class Solver(object):
         load_timer = Timer()
 
         for step in xrange(1, self.max_iter + 1):
-            print "current iteration = " + str(step)
+            # print "current iteration = " + str(step)
             load_timer.tic()
             images, labels = self.data.get()
             load_timer.toc()
             feed_dict = {self.net.x: images, self.net.labels: labels}
 
-            if step % self.summary_iter == 0:
-                if step % (self.summary_iter * 10) == 0:
-                    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-                    run_metadata = tf.RunMetadata()
+            # if step % self.summary_iter == 0:
+            #     if step % (self.summary_iter * 10) == 0:
+            #         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            #         run_metadata = tf.RunMetadata()
+            #
+            #         train_timer.tic()
+            #         summary_str, loss, _ = self.sess.run(
+            #             [self.summary_op, self.net.loss, self.train_op],
+            #             feed_dict=feed_dict)
+            #         train_timer.toc()
+            #
+            #         self.writer.add_run_metadata(run_metadata,
+            #                                      'step_{}'.format(step), step)
+            #
+            #         log_str = ('{} Epoch: {}, Step: {}, Learning rate: {},'
+            #                    ' Loss: {:5.3f}\nSpeed: {:.3f}s/iter,'
+            #                    ' Load: {:.3f}s/iter, Remain: {}').format(
+            #             datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
+            #             self.data.epoch,
+            #             int(step),
+            #             round(self.learning_rate.eval(session=self.sess), 6),
+            #             loss,
+            #             train_timer.average_time,
+            #             load_timer.average_time,
+            #             train_timer.remain(step, self.max_iter))
+            #         print log_str
+            #
+            #     else:
+            #         train_timer.tic()
+            #         summary_str, _ = self.sess.run(
+            #             [self.summary_op, self.train_op], feed_dict=feed_dict)
+            #         train_timer.toc()
+            #
+            #     self.writer.add_summary(summary_str, step)
+            #
+            # else:
+            #     train_timer.tic()
+            #     _ = self.sess.run(self.train_op, feed_dict=feed_dict)
+            #     train_timer.toc()
 
-                    train_timer.tic()
-                    summary_str, loss, _ = self.sess.run(
-                        [self.summary_op, self.net.loss, self.train_op],
-                        feed_dict=feed_dict)
-                    train_timer.toc()
+            train_timer.tic()
+            _, summary_str, loss = self.sess.run([self.train_op, self.summary_op, self.net.loss], feed_dict=feed_dict)
+            # _, loss = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
+            train_timer.toc()
 
-                    self.writer.add_run_metadata(run_metadata,
-                                                 'step_{}'.format(step), step)
+            log_str = ('{} Epoch: {}, Step: {},'
+                       ' Loss: {:5.3f} Speed: {:.3f}s/iter,'
+                       ' Load: {:.3f}s/iter, Remain: {}').format(
+                datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
+                self.data.epoch,
+                int(step),
+                # round(self.initial_learning_rate.eval(session=self.sess), 6),
+                loss,
+                train_timer.average_time,
+                load_timer.average_time,
+                train_timer.remain(step, self.max_iter))
+            print log_str
 
-                    log_str = ('{} Epoch: {}, Step: {}, Learning rate: {},'
-                               ' Loss: {:5.3f}\nSpeed: {:.3f}s/iter,'
-                               ' Load: {:.3f}s/iter, Remain: {}').format(
-                        datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
-                        self.data.epoch,
-                        int(step),
-                        round(self.learning_rate.eval(session=self.sess), 6),
-                        loss,
-                        train_timer.average_time,
-                        load_timer.average_time,
-                        train_timer.remain(step, self.max_iter))
-                    print log_str
-
-                else:
-                    train_timer.tic()
-                    summary_str, _ = self.sess.run(
-                        [self.summary_op, self.train_op], feed_dict=feed_dict)
-                    train_timer.toc()
-
-                self.writer.add_summary(summary_str, step)
-
-            else:
-                train_timer.tic()
-                _ = self.sess.run(self.train_op, feed_dict=feed_dict)
-                train_timer.toc()
+            self.writer.add_summary(summary_str, step)
 
             if step % self.save_iter == 0:
                 print '{} Saving checkpoint file to: {}'.format(
                     datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
                     self.output_dir)
-                self.saver.save(self.sess, self.ckpt_file,
-                                global_step=self.global_step)
+                path_where_variables_saved = self.saver.save(self.sess, self.ckpt_file, global_step=self.global_step)
+                print '{} Session variables successfully saved to: {}'.format(
+                    datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
+                    path_where_variables_saved)
 
     def save_cfg(self):
 
@@ -128,22 +158,22 @@ class Solver(object):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', default=None, type=str)
     parser.add_argument('--gpu', default=None, type=int)
     args = parser.parse_args()
 
-    if args.weights is not None:
-        cfg.WEIGHTS_FILE = os.path.join(cfg.WEIGHTS_DIR, args.weights)
     if args.gpu is not None:
         cfg.GPU = str(args.gpu)
 
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.GPU
 
-    yolo = YOLONet('train')
-    # pascal = PascalVoc('train')
-    my_own_data_set = MyOwnDataFormat('train')
+    yolo = YOLONet('train', cfg.MY_OWN_DATA_CLASSES)
 
-    solver = Solver(yolo, my_own_data_set)
+    # data_set = PascalVoc('train')
+    data_set = MyOwnDataFormat('train')
+
+    weight_file = 'data/output/2017_03_15_19_38/save.ckpt-20'
+
+    solver = Solver(yolo, data_set, weight_file)
 
     solver.train()
 

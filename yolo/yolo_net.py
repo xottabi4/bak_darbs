@@ -4,10 +4,8 @@ import yolo.config as cfg
 
 
 class YOLONet(object):
-    def __init__(self, phase):
-        self.weights_file = cfg.WEIGHTS_FILE
-
-        self.classes = cfg.MY_OWN_DATA_CLASSES
+    def __init__(self, phase, classes):
+        self.classes = classes
         self.num_class = len(self.classes)
         self.image_size = cfg.IMAGE_SIZE
         self.cell_size = cfg.CELL_SIZE
@@ -27,7 +25,8 @@ class YOLONet(object):
         self.alpha = cfg.ALPHA
         self.disp_console = cfg.DISP_CONSOLE
         self.phase = phase
-        self.collection = []
+        self.conv_layer_variables = []
+        self.all_layer_variables = []
         self.offset = np.transpose(np.reshape(np.array(
             [np.arange(self.cell_size)] * self.cell_size * self.boxes_per_cell),
             (self.boxes_per_cell, self.cell_size, self.cell_size)), (1, 2, 0))
@@ -71,11 +70,11 @@ class YOLONet(object):
         self.fc_29 = self.fc_layer(29, self.conv_28, 512, flat=True, linear=False)
         self.fc_30 = self.fc_layer(30, self.fc_29, 4096, flat=False, linear=False)
         if self.phase == 'train':
-            self.dropout_31 = tf.nn.dropout(self.fc_30, keep_prob=0.5)
+            # self.dropout_31 = tf.nn.dropout(self.fc_30, keep_prob=0.5)
             self.fc_32 = self.fc_layer(
-                32, self.dropout_31, self.output_size, flat=False, linear=True)
+                32, self.fc_30, self.output_size, flat=False, linear=True)
             self.labels = tf.placeholder(
-                'float32', [None, self.cell_size, self.cell_size, self.boxes_per_cell * 5 + self.num_class])
+                'float32', [None, self.cell_size, self.cell_size, 5 + self.num_class])
             self.loss = self.loss_layer(33, self.fc_32, self.labels)
             tf.summary.scalar(self.phase + '/total_loss', self.loss)
         else:
@@ -86,8 +85,11 @@ class YOLONet(object):
         channels = inputs.get_shape()[3]
         weight = tf.Variable(tf.truncated_normal([size, size, int(channels), filters], stddev=0.1))
         biases = tf.Variable(tf.constant(0.1, shape=[filters]))
-        self.collection.append(weight)
-        self.collection.append(biases)
+        self.all_layer_variables.append(weight)
+        self.all_layer_variables.append(biases)
+
+        self.conv_layer_variables.append(weight)
+        self.conv_layer_variables.append(biases)
 
         pad_size = size // 2
         pad_mat = np.array([[0, 0], [pad_size, pad_size], [pad_size, pad_size], [0, 0]])
@@ -120,8 +122,8 @@ class YOLONet(object):
             inputs_processed = inputs
         weight = tf.Variable(tf.truncated_normal([dim, hiddens], stddev=0.1))
         biases = tf.Variable(tf.constant(0.1, shape=[hiddens]))
-        self.collection.append(weight)
-        self.collection.append(biases)
+        self.all_layer_variables.append(weight)
+        self.all_layer_variables.append(biases)
         if self.disp_console:
             print '    Layer  %d : Type = Full, Hidden = %d, Input dimension = %d, Flat = %d, Activation = %d' % (
                 idx, hiddens, int(dim), int(flat), 1 - int(linear))
@@ -230,6 +232,19 @@ class YOLONet(object):
         coord_loss = tf.reduce_mean(tf.reduce_sum(tf.square(boxes_delta),
                                                   reduction_indices=[1, 2, 3, 4]), name='coord_loss') * self.coord_scale
 
+        # checks for NaN and inf
+        tf.verify_tensor_all_finite(class_loss, "class_loss")
+        tf.verify_tensor_all_finite(object_loss, "object_loss")
+        tf.verify_tensor_all_finite(noobject_loss, "noobject_loss")
+        tf.verify_tensor_all_finite(coord_loss, "coord_loss")
+
+        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 0], "boxes_delta_x")
+        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 1], "boxes_delta_y")
+        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 2], "boxes_delta_w")
+        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 3], "boxes_delta_h")
+        tf.verify_tensor_all_finite(iou_predict_truth, "iou")
+
+        # for summary in tensorboard
         tf.summary.scalar(self.phase + '/class_loss', class_loss)
         tf.summary.scalar(self.phase + '/object_loss', object_loss)
         tf.summary.scalar(self.phase + '/noobject_loss', noobject_loss)

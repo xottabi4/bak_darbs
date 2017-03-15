@@ -5,16 +5,15 @@ import cv2
 import yolo.config as cfg
 from yolo.yolo_net import YOLONet
 from utils.timer import Timer
-from utils.pascal_voc import PascalVoc
+from utils.PascalVoc import PascalVoc
 
 
 class Detector(object):
-
-    def __init__(self, net, weight_file):
+    def __init__(self, net, weight_file, classes):
         self.net = net
         self.weights_file = weight_file
 
-        self.classes = cfg.MY_OWN_DATA_PATH
+        self.classes = classes
         self.num_class = len(self.classes)
         self.image_size = cfg.IMAGE_SIZE
         self.cell_size = cfg.CELL_SIZE
@@ -40,7 +39,8 @@ class Detector(object):
             cv2.rectangle(img, (x - w, y - h), (x + w, y + h), (0, 255, 0), 2)
             cv2.rectangle(img, (x - w, y - h - 20),
                           (x + w, y - h), (125, 125, 125), -1)
-            cv2.putText(img, result[i][0] + ' : %.2f' % result[i][5], (x - w + 5, y - h - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+            cv2.putText(img, result[i][0] + ' : %.2f' % result[i][5], (x - w + 5, y - h - 7), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
     def detect(self, img):
         img_h, img_w, _ = img.shape
@@ -70,10 +70,12 @@ class Detector(object):
     def interpret_output(self, output):
         probs = np.zeros((self.cell_size, self.cell_size,
                           self.boxes_per_cell, self.num_class))
-        class_probs = np.reshape(output[0:self.boundary1], ( self.cell_size, self.cell_size, self.num_class))
-        scales = np.reshape(output[self.boundary1:self.boundary2], (self.cell_size, self.cell_size, self.boxes_per_cell))
+        class_probs = np.reshape(output[0:self.boundary1], (self.cell_size, self.cell_size, self.num_class))
+        scales = np.reshape(output[self.boundary1:self.boundary2],
+                            (self.cell_size, self.cell_size, self.boxes_per_cell))
         boxes = np.reshape(output[self.boundary2:], (self.cell_size, self.cell_size, self.boxes_per_cell, 4))
-        offset = np.transpose(np.reshape(np.array([np.arange(self.cell_size)] * self.cell_size * self.boxes_per_cell), (self.boxes_per_cell, self.cell_size, self.cell_size)), (1, 2, 0))
+        offset = np.transpose(np.reshape(np.array([np.arange(self.cell_size)] * self.cell_size * self.boxes_per_cell),
+                                         (self.boxes_per_cell, self.cell_size, self.cell_size)), (1, 2, 0))
 
         boxes[:, :, :, 0] += offset
         boxes[:, :, :, 1] += np.transpose(offset, (1, 0, 2))
@@ -93,7 +95,7 @@ class Detector(object):
                                filter_mat_boxes[1], filter_mat_boxes[2]]
         probs_filtered = probs[filter_mat_probs]
         classes_num_filtered = np.argmax(filter_mat_probs, axis=3)[filter_mat_boxes[
-            0], filter_mat_boxes[1], filter_mat_boxes[2]]
+                                                                       0], filter_mat_boxes[1], filter_mat_boxes[2]]
 
         argsort = np.array(np.argsort(probs_filtered))[::-1]
         boxes_filtered = boxes_filtered[argsort]
@@ -115,15 +117,15 @@ class Detector(object):
         result = []
         for i in range(len(boxes_filtered)):
             result.append([self.classes[classes_num_filtered[i]], boxes_filtered[i][0], boxes_filtered[
-                          i][1], boxes_filtered[i][2], boxes_filtered[i][3], probs_filtered[i]])
+                i][1], boxes_filtered[i][2], boxes_filtered[i][3], probs_filtered[i]])
 
         return result
 
     def iou(self, box1, box2):
         tb = min(box1[0] + 0.5 * box1[2], box2[0] + 0.5 * box2[2]) - \
-            max(box1[0] - 0.5 * box1[2], box2[0] - 0.5 * box2[2])
+             max(box1[0] - 0.5 * box1[2], box2[0] - 0.5 * box2[2])
         lr = min(box1[1] + 0.5 * box1[3], box2[1] + 0.5 * box2[3]) - \
-            max(box1[1] - 0.5 * box1[3], box2[1] - 0.5 * box2[3])
+             max(box1[1] - 0.5 * box1[3], box2[1] - 0.5 * box2[3])
         if tb < 0 or lr < 0:
             intersection = 0
         else:
@@ -135,6 +137,7 @@ class Detector(object):
         ret, _ = cap.read()
 
         while ret:
+            ret, frame = cap.read()
 
             detect_timer.tic()
             result = self.detect(frame)
@@ -144,8 +147,6 @@ class Detector(object):
             self.draw_result(frame, result)
             cv2.imshow('Camera', frame)
             cv2.waitKey(wait)
-
-            ret, frame = cap.read()
 
     def image_detector(self, imname, wait=0):
         detect_timer = Timer()
@@ -164,16 +165,21 @@ class Detector(object):
 def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.GPU
 
-    yolo = YOLONet('test')
-    weight_file = 'data/weights/YOLO_small.ckpt'
-    detector = Detector(yolo, weight_file)
+    yolo = YOLONet('test', cfg.MY_OWN_DATA_CLASSES)
+    # weight_file = 'data/weights/YOLO_small.ckpt'
+
+    weight_file = 'data/output/2017_03_15_20_07/save.ckpt-60'
+
+    detector = Detector(yolo, weight_file, cfg.MY_OWN_DATA_CLASSES)
 
     # detect from camera
     # cap = cv2.VideoCapture(-1)
     # detector.camera_detector(cap)
 
     # detect from image file
-    imname = 'test/person.jpg'
+
+    # imname = 'test/formula2.jpg'
+    imname = 'test/car.png'
     detector.image_detector(imname)
 
 

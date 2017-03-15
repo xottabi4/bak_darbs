@@ -17,7 +17,7 @@ class MyOwnDataFormat(object):
         self.classes = cfg.MY_OWN_DATA_CLASSES
         self.class_to_ind = dict(zip(self.classes, xrange(len(self.classes))))
         self.flipped = cfg.FLIPPED
-        self.prediction_count = cfg.BOXES_PER_CELL * 5 + len(self.classes)
+        self.prediction_count = 5 + len(self.classes)
         self.phase = phase
         self.rebuild = rebuild
         self.cursor = 0
