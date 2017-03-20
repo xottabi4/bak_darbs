@@ -1,10 +1,5 @@
-.idea/*
 *.pyc
-/data/weights/*
-/test/
-/data/cache/
-/data/pascal_voc/
-/venv/
-/data/output/*
-/data/my_own_data_set/
-/log.txt
+test/
+venv/
+.idea/
+data/
