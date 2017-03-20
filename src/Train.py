@@ -1,13 +1,13 @@
-import tensorflow as tf
-import numpy as np
+import argparse
 import datetime
 import os
-import argparse
-import yolo.config as cfg
-from utils.MyOwnDataFormat import MyOwnDataFormat
-from yolo.yolo_net import YOLONet
-from utils.timer import Timer
-from utils.PascalVoc import PascalVoc
+
+import tensorflow as tf
+
+import src.Config as cfg
+from src.training_data.MyOwnDataFormat import MyOwnDataFormat
+from src.utils.Timer import Timer
+from network_architectures.YoloNet import YoloNet
 
 
 class Solver(object):
@@ -31,17 +31,18 @@ class Solver(object):
 
         self.global_step = tf.get_variable('global_step', [],
                                            initializer=tf.constant_initializer(0), trainable=False)
-        self.learning_rate = tf.train.exponential_decay(
-            self.initial_learning_rate, self.global_step, self.decay_steps,
-            self.decay_rate, self.staircase, name='learning_rate')
+        # self.learning_rate = tf.train.exponential_decay(
+        #     self.initial_learning_rate, self.global_step, self.decay_steps,
+        #     self.decay_rate, self.staircase, name='learning_rate')
 
-        # self.learning_rate = self.initial_learning_rate
+        self.learning_rate = self.initial_learning_rate
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate) \
+            .minimize(self.net.loss, global_step=self.global_step)
+        # self.optimizer = tf.train.GradientDescentOptimizer(
+        #     learning_rate=self.learning_rate).minimize(
+        #     self.net.loss, global_step=self.global_step)
 
-        # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate).minimize(self.net.loss,
-        #                                                                                            global_step=self.global_step)
-        self.optimizer = tf.train.GradientDescentOptimizer(
-            learning_rate=self.learning_rate).minimize(
-            self.net.loss, global_step=self.global_step)
+        # Without it training happens too slow
         self.ema = tf.train.ExponentialMovingAverage(decay=0.999)
         self.averages_op = self.ema.apply(tf.trainable_variables())
         with tf.control_dependencies([self.optimizer]):
@@ -64,6 +65,7 @@ class Solver(object):
             saver.restore(self.sess, self.weights_file)
 
         self.writer.add_graph(self.sess.graph)
+        self.log_file = open(os.path.join(self.output_dir, "training_log.txt"), "w")
 
     def train(self):
 
@@ -118,10 +120,10 @@ class Solver(object):
             #     train_timer.toc()
 
             train_timer.tic()
+            # summary_str, loss = self.sess.run([self.summary_op, self.net.loss], feed_dict=feed_dict)
             _, summary_str, loss = self.sess.run([self.train_op, self.summary_op, self.net.loss], feed_dict=feed_dict)
             # _, loss = self.sess.run([self.train_op, self.net.loss], feed_dict=feed_dict)
             train_timer.toc()
-
             log_str = ('{} Epoch: {}, Step: {},'
                        ' Loss: {:5.3f} Speed: {:.3f}s/iter,'
                        ' Load: {:.3f}s/iter, Remain: {}').format(
@@ -134,17 +136,23 @@ class Solver(object):
                 load_timer.average_time,
                 train_timer.remain(step, self.max_iter))
             print log_str
+            self.log_file.write(log_str + "\n")
 
             self.writer.add_summary(summary_str, step)
 
             if step % self.save_iter == 0:
-                print '{} Saving checkpoint file to: {}'.format(
+                log_str = '{} Saving checkpoint file to: {}'.format(
                     datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
                     self.output_dir)
-                path_where_variables_saved = self.saver.save(self.sess, self.ckpt_file, global_step=self.global_step)
-                print '{} Session variables successfully saved to: {}'.format(
+                print log_str
+                self.log_file.write(log_str + "\n")
+                path_where_variables_saved = self.saver.save(self.sess, self.ckpt_file, global_step=self.global_step,
+                                                             write_meta_graph=False)
+                log_str = '{} Session variables successfully saved to: {}'.format(
                     datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
                     path_where_variables_saved)
+                print log_str
+                self.log_file.write(log_str + "\n")
 
     def save_cfg(self):
 
@@ -158,7 +166,7 @@ class Solver(object):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--gpu', default=None, type=int)
+    parser.add_argument('--gpu', default=None, type=str)
     args = parser.parse_args()
 
     if args.gpu is not None:
@@ -166,14 +174,17 @@ def main():
 
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.GPU
 
-    yolo = YOLONet('train', cfg.MY_OWN_DATA_CLASSES)
+    yolo = YoloNet('train', cfg.MY_OWN_DATA_CLASSES)
 
     # data_set = PascalVoc('train')
     data_set = MyOwnDataFormat('train')
 
-    weight_file = 'data/output/2017_03_15_19_38/save.ckpt-20'
+    # weight_file = 'data/output/2017_03_15_19_38/save.ckpt-20'
+    weight_file = 'data/output/2017_03_20_01_34/save.ckpt-50'
+    # weight_file = "data/weights/YOLO_small.ckpt"
+    # weight_file = None
 
-    solver = Solver(yolo, data_set, weight_file)
+    solver = Solver(yolo, data_set, weights_file=weight_file, use_fc_layer_variables=True)
 
     solver.train()
 

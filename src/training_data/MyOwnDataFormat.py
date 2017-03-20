@@ -1,10 +1,12 @@
-import os
-import xml.etree.ElementTree as ET
-import numpy as np
-import cv2
 import cPickle
 import copy
-import yolo.config as cfg
+import os
+import xml.etree.ElementTree as ET
+
+import cv2
+import numpy as np
+
+import Config as cfg
 
 
 class MyOwnDataFormat(object):
@@ -70,7 +72,8 @@ class MyOwnDataFormat(object):
         return gt_labels
 
     def load_labels(self):
-        cache_file = os.path.join(self.cache_path, 'own_data_set_' + self.phase + '_gt_labels.pkl')
+        cell_size_info = "cell_size" + str(self.cell_size)+"_"
+        cache_file = os.path.join(self.cache_path, 'own_data_set_'+cell_size_info + self.phase + '_gt_labels.pkl')
         if os.path.exists(cache_file) and not self.rebuild:
             print 'Loading gt_labels from: ' + cache_file
             with open(cache_file, 'rb') as f:
@@ -113,19 +116,20 @@ class MyOwnDataFormat(object):
 
         for bounding_box in bounding_boxes:
 
-            # TODO Why it is needed?
-            # Make pixel indexes 0-based
+            # convert roi to pascal format
             xmin = float(bounding_box.find('x').text)
-            ymin = float(bounding_box.find('y').text) - float(bounding_box.find('h').text)
+            ymin = float(bounding_box.find('y').text)
             xmax = float(bounding_box.find('x').text) + float(bounding_box.find('w').text)
-            ymax = float(bounding_box.find('y').text)
+            ymax = float(bounding_box.find('y').text) + float(bounding_box.find('h').text)
 
+            # Make pixel indexes 0-based
             x1 = max(min((xmin - 1) * w_ratio, self.image_size - 1), 0)
             y1 = max(min((ymin - 1) * h_ratio, self.image_size - 1), 0)
             x2 = max(min((xmax - 1) * w_ratio, self.image_size - 1), 0)
             y2 = max(min((ymax - 1) * h_ratio, self.image_size - 1), 0)
 
             # cls_ind = self.class_to_ind[object.find('name').text.lower().strip()]
+            # if len(self.classes) == 1:
             cls_ind = 0
 
             boxes = [(x2 + x1) / 2, (y2 + y1) / 2, x2 - x1, y2 - y1]

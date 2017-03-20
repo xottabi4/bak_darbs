@@ -1,9 +1,15 @@
+import abc
+
+import Config as cfg
 import numpy as np
 import tensorflow as tf
-import yolo.config as cfg
+
+from ActivationFunction import ActivationFunction
 
 
-class YOLONet(object):
+class NetworkBase(object):
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self, phase, classes):
         self.classes = classes
         self.num_class = len(self.classes)
@@ -32,58 +38,17 @@ class YOLONet(object):
             (self.boxes_per_cell, self.cell_size, self.cell_size)), (1, 2, 0))
 
         self.build_networks()
-
         # self.global_step = tf.Variable(0, trainable=False)
 
+    @abc.abstractmethod
     def build_networks(self):
-        if self.disp_console:
-            print "Building YOLO_small graph..."
-        self.x = tf.placeholder('float32', [None, 448, 448, 3])
-        self.conv_1 = self.conv_layer(1, self.x, 64, 7, 2)
-        self.pool_2 = self.pooling_layer(2, self.conv_1, 2, 2)
-        self.conv_3 = self.conv_layer(3, self.pool_2, 192, 3, 1)
-        self.pool_4 = self.pooling_layer(4, self.conv_3, 2, 2)
-        self.conv_5 = self.conv_layer(5, self.pool_4, 128, 1, 1)
-        self.conv_6 = self.conv_layer(6, self.conv_5, 256, 3, 1)
-        self.conv_7 = self.conv_layer(7, self.conv_6, 256, 1, 1)
-        self.conv_8 = self.conv_layer(8, self.conv_7, 512, 3, 1)
-        self.pool_9 = self.pooling_layer(9, self.conv_8, 2, 2)
-        self.conv_10 = self.conv_layer(10, self.pool_9, 256, 1, 1)
-        self.conv_11 = self.conv_layer(11, self.conv_10, 512, 3, 1)
-        self.conv_12 = self.conv_layer(12, self.conv_11, 256, 1, 1)
-        self.conv_13 = self.conv_layer(13, self.conv_12, 512, 3, 1)
-        self.conv_14 = self.conv_layer(14, self.conv_13, 256, 1, 1)
-        self.conv_15 = self.conv_layer(15, self.conv_14, 512, 3, 1)
-        self.conv_16 = self.conv_layer(16, self.conv_15, 256, 1, 1)
-        self.conv_17 = self.conv_layer(17, self.conv_16, 512, 3, 1)
-        self.conv_18 = self.conv_layer(18, self.conv_17, 512, 1, 1)
-        self.conv_19 = self.conv_layer(19, self.conv_18, 1024, 3, 1)
-        self.pool_20 = self.pooling_layer(20, self.conv_19, 2, 2)
-        self.conv_21 = self.conv_layer(21, self.pool_20, 512, 1, 1)
-        self.conv_22 = self.conv_layer(22, self.conv_21, 1024, 3, 1)
-        self.conv_23 = self.conv_layer(23, self.conv_22, 512, 1, 1)
-        self.conv_24 = self.conv_layer(24, self.conv_23, 1024, 3, 1)
-        self.conv_25 = self.conv_layer(25, self.conv_24, 1024, 3, 1)
-        self.conv_26 = self.conv_layer(26, self.conv_25, 1024, 3, 2)
-        self.conv_27 = self.conv_layer(27, self.conv_26, 1024, 3, 1)
-        self.conv_28 = self.conv_layer(28, self.conv_27, 1024, 3, 1)
-        self.fc_29 = self.fc_layer(29, self.conv_28, 512, flat=True, linear=False)
-        self.fc_30 = self.fc_layer(30, self.fc_29, 4096, flat=False, linear=False)
-        if self.phase == 'train':
-            # self.dropout_31 = tf.nn.dropout(self.fc_30, keep_prob=0.5)
-            self.fc_32 = self.fc_layer(
-                32, self.fc_30, self.output_size, flat=False, linear=True)
-            self.labels = tf.placeholder(
-                'float32', [None, self.cell_size, self.cell_size, 5 + self.num_class])
-            self.loss = self.loss_layer(33, self.fc_32, self.labels)
-            tf.summary.scalar(self.phase + '/total_loss', self.loss)
-        else:
-            self.fc_32 = self.fc_layer(
-                32, self.fc_30, self.output_size, flat=False, linear=True)
+        return
 
-    def conv_layer(self, idx, inputs, filters, size, stride):
+    def conv_layer(self, idx, inputs, filters, size, stride, activation):
         channels = inputs.get_shape()[3]
-        weight = tf.Variable(tf.truncated_normal([size, size, int(channels), filters], stddev=0.1))
+        # constant 0.1 standard deviation is sometimes too big
+        stddev = np.math.sqrt(2.0 / int(channels))
+        weight = tf.Variable(tf.truncated_normal([size, size, int(channels), filters], stddev=stddev))
         biases = tf.Variable(tf.constant(0.1, shape=[filters]))
         self.all_layer_variables.append(weight)
         self.all_layer_variables.append(biases)
@@ -102,7 +67,13 @@ class YOLONet(object):
         if self.disp_console:
             print '    Layer  %d : Type = Conv, Size = %d * %d, Stride = %d, Filters = %d, Input channels = %d' % (
                 idx, size, size, stride, filters, int(channels))
-        return tf.maximum(self.alpha * conv_biased, conv_biased, name=str(idx) + '_leaky_relu')
+
+        if activation == ActivationFunction.ReLU:
+            return tf.nn.relu(conv_biased, name=str(idx) + '_relu')
+        elif activation == ActivationFunction.LeakyReLU:
+            return tf.maximum(self.alpha * conv_biased, conv_biased, name=str(idx) + '_leaky_relu')
+        else:
+            return conv_biased
 
     def pooling_layer(self, idx, inputs, size, stride):
         if self.disp_console:
@@ -111,7 +82,7 @@ class YOLONet(object):
         return tf.nn.max_pool(inputs, ksize=[1, size, size, 1], strides=[1, stride, stride, 1], padding='SAME',
                               name=str(idx) + '_pool')
 
-    def fc_layer(self, idx, inputs, hiddens, flat=False, linear=False):
+    def fc_layer(self, idx, inputs, hiddens, flat, activation):
         input_shape = inputs.get_shape().as_list()
         if flat:
             dim = input_shape[1] * input_shape[2] * input_shape[3]
@@ -120,19 +91,26 @@ class YOLONet(object):
         else:
             dim = input_shape[1]
             inputs_processed = inputs
-        weight = tf.Variable(tf.truncated_normal([dim, hiddens], stddev=0.1))
+
+        stddev = np.math.sqrt(2.0 / dim)
+
+        weight = tf.Variable(tf.truncated_normal([dim, hiddens], stddev=stddev))
         biases = tf.Variable(tf.constant(0.1, shape=[hiddens]))
         self.all_layer_variables.append(weight)
         self.all_layer_variables.append(biases)
         if self.disp_console:
             print '    Layer  %d : Type = Full, Hidden = %d, Input dimension = %d, Flat = %d, Activation = %d' % (
-                idx, hiddens, int(dim), int(flat), 1 - int(linear))
-        if linear:
+                idx, hiddens, int(dim), int(flat), ActivationFunction.ReLU)
+        if activation == ActivationFunction.ReLU:
+            ip = tf.add(tf.matmul(inputs_processed, weight), biases)
+            return tf.nn.relu(ip, name=str(idx) + '_relu')
+        elif activation == ActivationFunction.ReLU:
+            ip = tf.add(tf.matmul(inputs_processed, weight), biases)
+            return tf.maximum(self.alpha * ip, ip, name=str(idx) + '_fc')
+        else:
             return tf.add(tf.matmul(inputs_processed, weight), biases, name=str(idx) + '_fc')
-        ip = tf.add(tf.matmul(inputs_processed, weight), biases)
-        return tf.maximum(self.alpha * ip, ip, name=str(idx) + '_fc')
 
-    def calc_iou(self, boxes1, boxes2):
+    def calculate_iou(self, boxes1, boxes2):
         """calculate ious
         Args:
           boxes1: 4-D tensor [CELL_SIZE, CELL_SIZE, BOXES_PER_CELL, 4]  ====> (x_center, y_center, w, h)
@@ -171,14 +149,12 @@ class YOLONet(object):
         return tf.clip_by_value(inter_square / union_square, 0.0, 1.0)
 
     def loss_layer(self, idx, predicts, labels):
-
         predict_classes = tf.reshape(predicts[:, :self.boundary1],
                                      [self.batch_size, self.cell_size, self.cell_size, self.num_class])
         predict_scales = tf.reshape(predicts[:, self.boundary1:self.boundary2],
                                     [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell])
         predict_boxes = tf.reshape(predicts[:, self.boundary2:],
                                    [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell, 4])
-
         response = tf.reshape(labels[:, :, :, 0],
                               [self.batch_size, self.cell_size, self.cell_size, 1])
         boxes = tf.reshape(labels[:, :, :, 1:5],
@@ -197,7 +173,11 @@ class YOLONet(object):
                                        tf.square(predict_boxes[:, :, :, :, 3])])
         predict_boxes_tran = tf.transpose(predict_boxes_tran, [1, 2, 3, 4, 0])
 
-        iou_predict_truth = self.calc_iou(predict_boxes_tran, boxes)
+        # TODO remove
+        # predict_boxes = tf.Print(predict_boxes, [predict_boxes], "predict_boxes = ", -1, 490)
+        # boxes = tf.Print(boxes, [boxes], "boxes = ", -1, 490)
+
+        iou_predict_truth = self.calculate_iou(predict_boxes_tran, boxes)
 
         # calculate I tensor [BATCH_SIZE, CELL_SIZE, CELL_SIZE, BOXES_PER_CELL]
         object_mask = tf.reduce_max(iou_predict_truth, 3, keep_dims=True)
@@ -228,9 +208,30 @@ class YOLONet(object):
 
         # coord_loss
         coord_mask = tf.expand_dims(object_mask, 4)
+
+        # TODO remove
+        # coord_mask = tf.Print(coord_mask, [coord_mask], "coord_mask = ", -1, 100000)
+        # predict_boxes_without_negative = tf.nn.relu(predict_boxes, name=None)
+        # boxes_tran_without_negative = tf.nn.relu(boxes_tran, name=None)
+
+        # TODO remove
+        # predict_boxes_without_negative = tf.Print(predict_boxes_without_negative, [predict_boxes_without_negative], "predict_boxes_without_negative = ", -1, 490)
+        # boxes_tran_without_negative = tf.Print(boxes_tran_without_negative, [boxes_tran_without_negative], "boxes_tran_without_negative = ", -1, 490)
+
         boxes_delta = coord_mask * (predict_boxes - boxes_tran)
+
         coord_loss = tf.reduce_mean(tf.reduce_sum(tf.square(boxes_delta),
                                                   reduction_indices=[1, 2, 3, 4]), name='coord_loss') * self.coord_scale
+
+        # TODO remove
+        # boxes_delta = tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 0]],
+        #                                       "boxes_delta_x = ", -1, 490)
+        # boxes_delta = tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 1]],
+        #                                       "boxes_delta_y = ", -1, 490)
+        # boxes_delta = tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 2]],
+        #                                       "boxes_delta_w = ", -1, 490)
+        # boxes_delta= tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 3]],
+        #                                       "boxes_delta_h = ", -1, 490)
 
         # checks for NaN and inf
         tf.verify_tensor_all_finite(class_loss, "class_loss")
@@ -243,6 +244,13 @@ class YOLONet(object):
         tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 2], "boxes_delta_w")
         tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 3], "boxes_delta_h")
         tf.verify_tensor_all_finite(iou_predict_truth, "iou")
+
+        # TODO remove
+        # prints values of loss
+        # class_loss = tf.Print(class_loss, [class_loss], "class_loss = ", -1, 490)
+        # object_loss = tf.Print(object_loss, [object_loss], "object_loss = ", -1, 490)
+        # noobject_loss = tf.Print(noobject_loss, [noobject_loss], "noobject_loss = ", -1, 490)
+        # coord_loss = tf.Print(coord_loss, [coord_loss], "coord_loss = ", -1, 490)
 
         # for summary in tensorboard
         tf.summary.scalar(self.phase + '/class_loss', class_loss)

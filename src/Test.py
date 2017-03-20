@@ -1,11 +1,12 @@
-import tensorflow as tf
-import numpy as np
 import os
+
 import cv2
-import yolo.config as cfg
-from yolo.yolo_net import YOLONet
-from utils.timer import Timer
-from utils.PascalVoc import PascalVoc
+import numpy as np
+import tensorflow as tf
+
+import Config as cfg
+from network_architectures.YoloNet import YoloNet
+from utils.Timer import Timer
 
 
 class Detector(object):
@@ -148,13 +149,18 @@ class Detector(object):
             cv2.imshow('Camera', frame)
             cv2.waitKey(wait)
 
-    def image_detector(self, imname, wait=0):
+    def image_detector(self, imname, wait=0, resize=False):
+        if not os.path.isfile(imname):
+            raise ValueError("No such file is present: {}".format(imname))
         detect_timer = Timer()
         image = cv2.imread(imname)
+        if resize:
+            image = cv2.resize(image, (640, 360))
 
         detect_timer.tic()
         result = self.detect(image)
         detect_timer.toc()
+        print result
         print 'Average detecting time: {:.3f}s'.format(detect_timer.average_time)
 
         self.draw_result(image, result)
@@ -165,22 +171,84 @@ class Detector(object):
 def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.GPU
 
-    yolo = YOLONet('test', cfg.MY_OWN_DATA_CLASSES)
-    # weight_file = 'data/weights/YOLO_small.ckpt'
+    network = YoloNet('test', cfg.MY_OWN_DATA_CLASSES)
 
-    weight_file = 'data/output/2017_03_15_20_07/save.ckpt-60'
+    weight_file = '../data/weights/save.ckpt-100'
+    # weight_file = '../data/output/2017_03_20_02_25/save.ckpt-30'
 
-    detector = Detector(yolo, weight_file, cfg.MY_OWN_DATA_CLASSES)
+    detector = Detector(network, weight_file, cfg.MY_OWN_DATA_CLASSES)
 
     # detect from camera
     # cap = cv2.VideoCapture(-1)
     # detector.camera_detector(cap)
 
     # detect from image file
+    imname = '../test/1.png'
+    detector.image_detector(imname, resize=True)
 
-    # imname = 'test/formula2.jpg'
-    imname = 'test/car.png'
-    detector.image_detector(imname)
+    # < xmin > 156 < / xmin >
+    # < ymin > 97 < / ymin >
+    # < xmax > 351 < / xmax >
+    # < ymax > 270 < / ymax >
+    # image = cv2.imread(imname)
+    # # < width > 500 < / width >
+    # # < height > 333 < / height >
+    # # image = cv2.resize(image, (500, 333))
+    # x = 156
+    # y = 97
+    # w = 351-156
+    # h = 270-97
+    # cv2.rectangle(image, (x , y), (x + w, y + h), (0, 255, 0), 2)
+    # cv2.imshow('ground truth image', image)
+    #
+    # # < x > 1347 < / x > < y > 788 < / y > < w > 284 < / w > < h > 208 < / h >
+    # ground_truth_roi_true = [1347, 788, 284, 208]
+    # x = int(ground_truth_roi_true[0])
+    # y = int(ground_truth_roi_true[1])
+    # w = int(ground_truth_roi_true[2])
+    # h = int(ground_truth_roi_true[3])
+    # image_true = cv2.imread(imname)
+    #
+    # image_true = cv2.circle(image_true, (x, y), 10, (0, 0, 255), -1)
+    # image_true = cv2.circle(image_true, (x + w, y + h), 10, (0, 0, 255), -1)
+    #
+    # image_true = cv2.rectangle(image_true, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    #
+    # image_true = cv2.resize(image_true, (448, 448))
+    #
+    # cv2.imshow('!!!before box transformation ground truth image', image_true)
+    #
+    # # asd
+    #
+    # image_size = 448
+    # ground_truth_image_resized = cv2.imread(imname)
+    #
+    # h_ratio = 1.0 * image_size / ground_truth_image_resized.shape[0]
+    # w_ratio = 1.0 * image_size / ground_truth_image_resized.shape[1]
+    # print h_ratio
+    # print w_ratio
+    #
+    # xmin = x
+    # ymin = y + h
+    # xmax = x + w
+    # ymax = y
+    #
+    # x1 = max(min((xmin - 1) * w_ratio, image_size - 1), 0)
+    # y1 = max(min((ymin - 1) * h_ratio, image_size - 1), 0)
+    # x2 = max(min((xmax - 1) * w_ratio, image_size - 1), 0)
+    # y2 = max(min((ymax - 1) * h_ratio, image_size - 1), 0)
+    #
+    # boxes = [(x2 + x1) / 2, (y2 + y1) / 2, x2 - x1, y2 - y1]
+    # print boxes
+    # ground_truth_image_resized = cv2.resize(ground_truth_image_resized, (image_size, image_size))
+    # x = int(boxes[0])
+    # y = int(boxes[1])
+    # w = int(boxes[2] / 2)
+    # h = int(boxes[3] / 2)
+    # cv2.rectangle(ground_truth_image_resized, (x - w, y - h), (x + w, y + h), (0, 255, 0), 2)
+    # cv2.imshow('ground truth image after resizing', ground_truth_image_resized)
+    #
+    # cv2.waitKey(0)
 
 
 if __name__ == '__main__':

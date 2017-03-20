@@ -1,10 +1,12 @@
-import os
-import xml.etree.ElementTree as ET
-import numpy as np
-import cv2
 import cPickle
 import copy
-import yolo.config as cfg
+import os
+import xml.etree.ElementTree as ET
+
+import cv2
+import numpy as np
+
+import Config as cfg
 
 
 class PascalVoc(object):

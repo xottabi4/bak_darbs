@@ -4,9 +4,7 @@ import os
 # path and dataset parameter
 #
 
-# Pascal VOC constants
-
-DATA_PATH = 'data'
+DATA_PATH = '../data'
 
 PASCAL_PATH = os.path.join(DATA_PATH, 'pascal_voc')
 
@@ -14,7 +12,7 @@ MY_OWN_DATA_PATH = os.path.join(DATA_PATH, 'my_own_data_set')
 
 CACHE_PATH = os.path.join(DATA_PATH, 'cache')
 
-OUTPUT_DIR = os.path.join(DATA_PATH, 'output')
+OUTPUT_DIR = os.path.join(DATA_PATH, 'training_output')
 
 WEIGHTS_DIR = os.path.join(DATA_PATH, 'weights')
 
@@ -33,6 +31,7 @@ FLIPPED = False
 
 IMAGE_SIZE = 448
 
+# maybe better it would be 11
 CELL_SIZE = 7
 
 BOXES_PER_CELL = 2
@@ -53,7 +52,7 @@ COORD_SCALE = 5.0
 
 GPU = ''
 
-LEARNING_RATE = 0.00001
+LEARNING_RATE = 0.0000001
 
 DECAY_STEPS = 10000
 
@@ -61,7 +60,7 @@ DECAY_RATE = 0.1
 
 STAIRCASE = True
 
-BATCH_SIZE = 20
+BATCH_SIZE = 16
 
 MAX_ITER = 15000
 

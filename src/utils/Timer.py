@@ -1,4 +1,6 @@
-import time, datetime
+import datetime
+import time
+
 
 class Timer(object):
     '''
