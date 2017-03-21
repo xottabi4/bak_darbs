@@ -34,16 +34,19 @@ class Solver(object):
 
         self.global_step = tf.get_variable('global_step', [],
                                            initializer=tf.constant_initializer(0), trainable=False)
-        self.learning_rate = tf.train.exponential_decay(
-            self.initial_learning_rate, self.global_step, self.decay_steps,
-            self.decay_rate, self.staircase, name='learning_rate')
 
-        # self.learning_rate = self.initial_learning_rate
-        # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate) \
-        #     .minimize(self.net.loss, global_step=self.global_step)
-        self.optimizer = tf.train.GradientDescentOptimizer(
-            learning_rate=self.learning_rate).minimize(
-            self.net.loss, global_step=self.global_step)
+        # Custom gradient optimizer with decay
+        # self.learning_rate = tf.train.exponential_decay(
+        #     self.initial_learning_rate, self.global_step, self.decay_steps,
+        #     self.decay_rate, self.staircase, name='learning_rate')
+        # self.optimizer = tf.train.GradientDescentOptimizer(
+        #     learning_rate=self.learning_rate).minimize(
+        #     self.net.loss, global_step=self.global_step)
+
+        # Adam optimizer
+        self.learning_rate = self.initial_learning_rate
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate) \
+            .minimize(self.net.loss, global_step=self.global_step)
 
         # Without it training happens too slow
         self.ema = tf.train.ExponentialMovingAverage(decay=0.999)
