@@ -4,8 +4,6 @@ import Config as cfg
 import numpy as np
 import tensorflow as tf
 
-from ActivationFunction import ActivationFunction
-
 
 class NetworkBase(object):
     __metaclass__ = abc.ABCMeta
@@ -44,21 +42,20 @@ class NetworkBase(object):
     def build_networks(self):
         return
 
-    def conv_layer(self, idx, inputs, filters, size, stride, activation):
+    def conv_layer(self, idx, inputs, filters, size, stride):
         channels = inputs.get_shape()[3]
-        # constant 0.1 standard deviation is sometimes too big
         stddev = np.math.sqrt(2.0 / int(channels))
-        # stddev=0.1
-        weight = tf.Variable(tf.truncated_normal([size, size, int(channels), filters], stddev=stddev))
+        weight = tf.Variable(tf.truncated_normal(
+            [size, size, int(channels), filters], stddev=stddev))
         biases = tf.Variable(tf.constant(0.1, shape=[filters]))
+        self.conv_layer_variables.append(weight)
+        self.conv_layer_variables.append(biases)
         self.all_layer_variables.append(weight)
         self.all_layer_variables.append(biases)
 
-        self.conv_layer_variables.append(weight)
-        self.conv_layer_variables.append(biases)
-
         pad_size = size // 2
-        pad_mat = np.array([[0, 0], [pad_size, pad_size], [pad_size, pad_size], [0, 0]])
+        pad_mat = np.array([[0, 0], [pad_size, pad_size],
+                            [pad_size, pad_size], [0, 0]])
         inputs_pad = tf.pad(inputs, pad_mat)
 
         conv = tf.nn.conv2d(inputs_pad, weight, strides=[1, stride, stride, 1],
@@ -68,13 +65,7 @@ class NetworkBase(object):
         if self.disp_console:
             print '    Layer  %d : Type = Conv, Size = %d * %d, Stride = %d, Filters = %d, Input channels = %d' % (
                 idx, size, size, stride, filters, int(channels))
-
-        if activation == ActivationFunction.ReLU:
-            return tf.nn.relu(conv_biased, name=str(idx) + '_relu')
-        elif activation == ActivationFunction.LeakyReLU:
-            return tf.maximum(self.alpha * conv_biased, conv_biased, name=str(idx) + '_leaky_relu')
-        else:
-            return conv_biased
+        return tf.maximum(self.alpha * conv_biased, conv_biased, name=str(idx) + '_leaky_relu')
 
     def pooling_layer(self, idx, inputs, size, stride):
         if self.disp_console:
@@ -83,7 +74,7 @@ class NetworkBase(object):
         return tf.nn.max_pool(inputs, ksize=[1, size, size, 1], strides=[1, stride, stride, 1], padding='SAME',
                               name=str(idx) + '_pool')
 
-    def fc_layer(self, idx, inputs, hiddens, flat, activation):
+    def fc_layer(self, idx, inputs, hiddens, flat=False, linear=False):
         input_shape = inputs.get_shape().as_list()
         if flat:
             dim = input_shape[1] * input_shape[2] * input_shape[3]
@@ -92,26 +83,20 @@ class NetworkBase(object):
         else:
             dim = input_shape[1]
             inputs_processed = inputs
-
         stddev = np.math.sqrt(2.0 / dim)
-        # stddev = 0.1
         weight = tf.Variable(tf.truncated_normal([dim, hiddens], stddev=stddev))
         biases = tf.Variable(tf.constant(0.1, shape=[hiddens]))
         self.all_layer_variables.append(weight)
         self.all_layer_variables.append(biases)
         if self.disp_console:
             print '    Layer  %d : Type = Full, Hidden = %d, Input dimension = %d, Flat = %d, Activation = %d' % (
-                idx, hiddens, int(dim), int(flat), ActivationFunction.ReLU)
-        if activation == ActivationFunction.ReLU:
-            ip = tf.add(tf.matmul(inputs_processed, weight), biases)
-            return tf.nn.relu(ip, name=str(idx) + '_relu')
-        elif activation == ActivationFunction.ReLU:
-            ip = tf.add(tf.matmul(inputs_processed, weight), biases)
-            return tf.maximum(self.alpha * ip, ip, name=str(idx) + '_fc')
-        else:
+                idx, hiddens, int(dim), int(flat), 1 - int(linear))
+        if linear:
             return tf.add(tf.matmul(inputs_processed, weight), biases, name=str(idx) + '_fc')
+        ip = tf.add(tf.matmul(inputs_processed, weight), biases)
+        return tf.maximum(self.alpha * ip, ip, name=str(idx) + '_fc')
 
-    def calculate_iou(self, boxes1, boxes2):
+    def calc_iou(self, boxes1, boxes2):
         """calculate ious
         Args:
           boxes1: 4-D tensor [CELL_SIZE, CELL_SIZE, BOXES_PER_CELL, 4]  ====> (x_center, y_center, w, h)
@@ -150,12 +135,14 @@ class NetworkBase(object):
         return tf.clip_by_value(inter_square / union_square, 0.0, 1.0)
 
     def loss_layer(self, idx, predicts, labels):
+
         predict_classes = tf.reshape(predicts[:, :self.boundary1],
                                      [self.batch_size, self.cell_size, self.cell_size, self.num_class])
         predict_scales = tf.reshape(predicts[:, self.boundary1:self.boundary2],
                                     [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell])
         predict_boxes = tf.reshape(predicts[:, self.boundary2:],
                                    [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell, 4])
+
         response = tf.reshape(labels[:, :, :, 0],
                               [self.batch_size, self.cell_size, self.cell_size, 1])
         boxes = tf.reshape(labels[:, :, :, 1:5],
@@ -174,11 +161,7 @@ class NetworkBase(object):
                                        tf.square(predict_boxes[:, :, :, :, 3])])
         predict_boxes_tran = tf.transpose(predict_boxes_tran, [1, 2, 3, 4, 0])
 
-        # TODO remove
-        # predict_boxes = tf.Print(predict_boxes, [predict_boxes], "predict_boxes = ", -1, 490)
-        # boxes = tf.Print(boxes, [boxes], "boxes = ", -1, 490)
-
-        iou_predict_truth = self.calculate_iou(predict_boxes_tran, boxes)
+        iou_predict_truth = self.calc_iou(predict_boxes_tran, boxes)
 
         # calculate I tensor [BATCH_SIZE, CELL_SIZE, CELL_SIZE, BOXES_PER_CELL]
         object_mask = tf.reduce_max(iou_predict_truth, 3, keep_dims=True)
@@ -209,51 +192,10 @@ class NetworkBase(object):
 
         # coord_loss
         coord_mask = tf.expand_dims(object_mask, 4)
-
-        # TODO remove
-        # coord_mask = tf.Print(coord_mask, [coord_mask], "coord_mask = ", -1, 100000)
-        # predict_boxes_without_negative = tf.nn.relu(predict_boxes, name=None)
-        # boxes_tran_without_negative = tf.nn.relu(boxes_tran, name=None)
-
-        # TODO remove
-        # predict_boxes_without_negative = tf.Print(predict_boxes_without_negative, [predict_boxes_without_negative], "predict_boxes_without_negative = ", -1, 490)
-        # boxes_tran_without_negative = tf.Print(boxes_tran_without_negative, [boxes_tran_without_negative], "boxes_tran_without_negative = ", -1, 490)
-
         boxes_delta = coord_mask * (predict_boxes - boxes_tran)
-
         coord_loss = tf.reduce_mean(tf.reduce_sum(tf.square(boxes_delta),
                                                   reduction_indices=[1, 2, 3, 4]), name='coord_loss') * self.coord_scale
 
-        # TODO remove
-        # boxes_delta = tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 0]],
-        #                                       "boxes_delta_x = ", -1, 490)
-        # boxes_delta = tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 1]],
-        #                                       "boxes_delta_y = ", -1, 490)
-        # boxes_delta = tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 2]],
-        #                                       "boxes_delta_w = ", -1, 490)
-        # boxes_delta= tf.Print(boxes_delta, [boxes_delta[:, :, :, :, 3]],
-        #                                       "boxes_delta_h = ", -1, 490)
-
-        # checks for NaN and inf
-        tf.verify_tensor_all_finite(class_loss, "class_loss")
-        tf.verify_tensor_all_finite(object_loss, "object_loss")
-        tf.verify_tensor_all_finite(noobject_loss, "noobject_loss")
-        tf.verify_tensor_all_finite(coord_loss, "coord_loss")
-
-        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 0], "boxes_delta_x")
-        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 1], "boxes_delta_y")
-        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 2], "boxes_delta_w")
-        tf.verify_tensor_all_finite(boxes_delta[:, :, :, :, 3], "boxes_delta_h")
-        tf.verify_tensor_all_finite(iou_predict_truth, "iou")
-
-        # TODO remove
-        # prints values of loss
-        # class_loss = tf.Print(class_loss, [class_loss], "class_loss = ", -1, 490)
-        # object_loss = tf.Print(object_loss, [object_loss], "object_loss = ", -1, 490)
-        # noobject_loss = tf.Print(noobject_loss, [noobject_loss], "noobject_loss = ", -1, 490)
-        # coord_loss = tf.Print(coord_loss, [coord_loss], "coord_loss = ", -1, 490)
-
-        # for summary in tensorboard
         tf.summary.scalar(self.phase + '/class_loss', class_loss)
         tf.summary.scalar(self.phase + '/object_loss', object_loss)
         tf.summary.scalar(self.phase + '/noobject_loss', noobject_loss)

@@ -4,10 +4,13 @@ import os
 
 import tensorflow as tf
 
-import src.Config as cfg
-from src.training_data.MyOwnDataFormat import MyOwnDataFormat
-from src.utils.Timer import Timer
+import Config as cfg
+from network_architectures.AlexNet import AlexNet
 from network_architectures.YoloNet import YoloNet
+from training_data.MyOwnDataFormat import MyOwnDataFormat
+from utils.Timer import Timer
+
+
 
 
 class Solver(object):
@@ -31,16 +34,16 @@ class Solver(object):
 
         self.global_step = tf.get_variable('global_step', [],
                                            initializer=tf.constant_initializer(0), trainable=False)
-        # self.learning_rate = tf.train.exponential_decay(
-        #     self.initial_learning_rate, self.global_step, self.decay_steps,
-        #     self.decay_rate, self.staircase, name='learning_rate')
+        self.learning_rate = tf.train.exponential_decay(
+            self.initial_learning_rate, self.global_step, self.decay_steps,
+            self.decay_rate, self.staircase, name='learning_rate')
 
-        self.learning_rate = self.initial_learning_rate
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate) \
-            .minimize(self.net.loss, global_step=self.global_step)
-        # self.optimizer = tf.train.GradientDescentOptimizer(
-        #     learning_rate=self.learning_rate).minimize(
-        #     self.net.loss, global_step=self.global_step)
+        # self.learning_rate = self.initial_learning_rate
+        # self.optimizer = tf.train.AdamOptimizer(learning_rate=self.initial_learning_rate) \
+        #     .minimize(self.net.loss, global_step=self.global_step)
+        self.optimizer = tf.train.GradientDescentOptimizer(
+            learning_rate=self.learning_rate).minimize(
+            self.net.loss, global_step=self.global_step)
 
         # Without it training happens too slow
         self.ema = tf.train.ExponentialMovingAverage(decay=0.999)
@@ -73,51 +76,10 @@ class Solver(object):
         load_timer = Timer()
 
         for step in xrange(1, self.max_iter + 1):
-            # print "current iteration = " + str(step)
             load_timer.tic()
             images, labels = self.data.get()
             load_timer.toc()
             feed_dict = {self.net.x: images, self.net.labels: labels}
-
-            # if step % self.summary_iter == 0:
-            #     if step % (self.summary_iter * 10) == 0:
-            #         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            #         run_metadata = tf.RunMetadata()
-            #
-            #         train_timer.tic()
-            #         summary_str, loss, _ = self.sess.run(
-            #             [self.summary_op, self.net.loss, self.train_op],
-            #             feed_dict=feed_dict)
-            #         train_timer.toc()
-            #
-            #         self.writer.add_run_metadata(run_metadata,
-            #                                      'step_{}'.format(step), step)
-            #
-            #         log_str = ('{} Epoch: {}, Step: {}, Learning rate: {},'
-            #                    ' Loss: {:5.3f}\nSpeed: {:.3f}s/iter,'
-            #                    ' Load: {:.3f}s/iter, Remain: {}').format(
-            #             datetime.datetime.now().strftime('%m/%d %H:%M:%S'),
-            #             self.data.epoch,
-            #             int(step),
-            #             round(self.learning_rate.eval(session=self.sess), 6),
-            #             loss,
-            #             train_timer.average_time,
-            #             load_timer.average_time,
-            #             train_timer.remain(step, self.max_iter))
-            #         print log_str
-            #
-            #     else:
-            #         train_timer.tic()
-            #         summary_str, _ = self.sess.run(
-            #             [self.summary_op, self.train_op], feed_dict=feed_dict)
-            #         train_timer.toc()
-            #
-            #     self.writer.add_summary(summary_str, step)
-            #
-            # else:
-            #     train_timer.tic()
-            #     _ = self.sess.run(self.train_op, feed_dict=feed_dict)
-            #     train_timer.toc()
 
             train_timer.tic()
             # summary_str, loss = self.sess.run([self.summary_op, self.net.loss], feed_dict=feed_dict)
@@ -174,17 +136,18 @@ def main():
 
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.GPU
 
-    yolo = YoloNet('train', cfg.MY_OWN_DATA_CLASSES)
+    network = YoloNet('train', cfg.MY_OWN_DATA_CLASSES)
+    # network = AlexNet('train', cfg.MY_OWN_DATA_CLASSES)
 
     # data_set = PascalVoc('train')
     data_set = MyOwnDataFormat('train')
 
-    # weight_file = 'data/output/2017_03_15_19_38/save.ckpt-20'
-    weight_file = 'data/output/2017_03_20_01_34/save.ckpt-50'
-    # weight_file = "data/weights/YOLO_small.ckpt"
-    # weight_file = None
+    # weight_file = "../data/training_output/2017_03_21_19_09/save.ckpt-30"
+    weight_file = None
+    # weight_file = '../data/training_output/2017_03_20_23_03/save.ckpt-120'
+    # weight_file = '../data/training_output/2017_03_21_00_14/save.ckpt-130'
 
-    solver = Solver(yolo, data_set, weights_file=weight_file, use_fc_layer_variables=True)
+    solver = Solver(network, data_set, weights_file=weight_file, use_fc_layer_variables=True)
 
     solver.train()
 
